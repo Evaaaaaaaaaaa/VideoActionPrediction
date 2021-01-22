@@ -186,8 +186,8 @@ def lstm_model(max_action_len):
     model.add(LSTM(256, return_sequences=True))
     # model.add(RepeatVector(max_action_len))
     model.add(LSTM(100, return_sequences=True))
-    model.add(TimeDistributed(Dense(47, activation="relu")))
-    model.compile(loss='mse', optimizer='adam', metrics=['accuracy'],
+    model.add(TimeDistributed(Dense(47, activation="softmax")))
+    model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'],
                   sample_weight_mode="temporal")
     model.summary()
     return model
@@ -302,32 +302,25 @@ def cross_validation(input_dict, encoded_y, model, max_timesteps):
 
 
 def display_acc(results):
-    # loop through result for each input proportion
+
     # loop through result for each input proportion
     for proportion, acc in results.items():
         count = 0
-        print("| Input: W_Activity  |Input(%): ", proportion * 100,
-              "%|                       |                       |                        |")
-        print(
-            "| --------------------- | --------------------- | --------------------- | --------------------- | ---------------------- |")
-        print("|", end='')
+        print("| Input: W_Activity  |Input(%): ", proportion * 100)
+
 
         for i in range(len(acc)):
-            print("timestep ", i + 1, ":", round(acc[i], 5), " | ", end='')
+            print(round(acc[i], 5), " ", end='')
             count += 1
-            if not count % 5:
-                print("")
-                print("|", end='')
-        print("")
         print("")
     print("")
-
 
 def run_model():
     data_dict = import_data()
     data_dict = cut_zeros(data_dict)
     max_action_len = find_max_action_length(data_dict)
     action_label = get_action_label()
+    model = lstm_model(max_action_len)
     results = {}
 
     # get input data with different proportion
@@ -342,7 +335,6 @@ def run_model():
         encoded_dict = feature_encoding(input_dict, action_label)
         encoded_y = np.array(label_encoding(train_y, action_label))
         encoded_dict = add_activity(encoded_dict)
-        model = lstm_model(max_action_len)
         result = cross_validation(encoded_dict, encoded_y, model, max_action_len)
         results[proportion] = result
     display_acc(results)

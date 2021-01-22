@@ -163,7 +163,7 @@ def lstm_model(max_action_len):
     # model.add(RepeatVector(max_action_len))
     model.add(LSTM(64, return_sequences=True))
     model.add(TimeDistributed(Dense(47, activation="softmax")))
-    model.compile(loss='mse', optimizer='adam', metrics=['accuracy'],
+    model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'],
                   sample_weight_mode="temporal")
     model.summary()
     return model
@@ -282,21 +282,15 @@ def display_acc(results):
     # loop through result for each input proportion
     for proportion, acc in results.items():
         count = 0
-        print("| Input: WO_Activity  |Input(%): ", proportion * 100,
-              "%|                       |                       |                        |")
-        print(
-            "| --------------------- | --------------------- | --------------------- | --------------------- | ---------------------- |")
-        print("|", end='')
+        print("| Input: WO_Activity  |Input(%): ", proportion * 100)
+
 
         for i in range(len(acc)):
-            print("timestep ", i + 1, ":", round(acc[i], 5), " | ", end='')
+            print(round(acc[i], 5), " ", end='')
             count += 1
-            if not count % 5:
-                print("")
-                print("|", end='')
-        print("")
         print("")
     print("")
+
 
 
 

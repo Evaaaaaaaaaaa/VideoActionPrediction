@@ -159,9 +159,9 @@ def tcn_model(max_action_len):
 
     i = Input(shape=(max_action_len, 47))
     o = TCN(return_sequences=True)(i)  # The TCN layers are here.
-    o = Dense(47)(o)
+    o = Dense(47, activation = "softmax")(o)
     model = Model(inputs=[i], outputs=[o])
-    model.compile(optimizer='adam', loss='mse')
+    model.compile(optimizer='adam', loss='categorical_crossentropy')
 
     model.summary()
     return model
@@ -283,19 +283,12 @@ def display_acc(results):
     # loop through result for each input proportion
     for proportion, acc in results.items():
         count = 0
-        print("| Input: WO_Activity  |Input(%): ", proportion * 100,
-              "%|                       |                       |                        |")
-        print(
-            "| --------------------- | --------------------- | --------------------- | --------------------- | ---------------------- |")
-        print("|", end='')
+        print("| Input: WO_Activity  |Input(%): ", proportion * 100)
+
 
         for i in range(len(acc)):
-            print("timestep ", i + 1, ":", round(acc[i], 5), " | ", end='')
+            print(round(acc[i], 5), " ", end='')
             count += 1
-            if not count % 5:
-                print("")
-                print("|", end='')
-        print("")
         print("")
     print("")
 
@@ -307,7 +300,9 @@ def run_model():
     data_dict = cut_zeros(data_dict)
     max_action_len = find_max_action_length(data_dict)
     action_label = get_action_label()
+    model = tcn_model(max_action_len)
     results = {}
+
 
     # get input data with different proportion
     input_proportion = [0.1, 0.2, 0.3, 0.4, 0.5]
@@ -320,10 +315,7 @@ def run_model():
         train_y = add_padding_to_y(train_y, max_action_len)
         encoded_dict = feature_encoding(input_dict, action_label)
         encoded_y = np.array(label_encoding(train_y, action_label))
-        model = tcn_model(max_action_len)
         result = cross_validation(encoded_dict, encoded_y, model, max_action_len)
         results[proportion] = result
     display_acc(results)
-
-
 run_model()
