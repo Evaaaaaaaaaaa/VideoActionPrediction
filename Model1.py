@@ -55,7 +55,6 @@ def find_max_action_length(data_dict):
 # get input x based on given proportion
 def get_input_x(data_dict, proportion):
     new_dict = {}
-    train_y = []
     for filename, frames in data_dict.items():
         frameLen = len(frames)
         inputLen = round(frameLen * proportion)
@@ -64,17 +63,41 @@ def get_input_x(data_dict, proportion):
     return new_dict
 
 
+def add_activity(input_dict):
+    activities = {"cereals": 1, "coffee": 2, "friedegg": 3, "milk": 4, "salat": 5, "sandwich": 6, "tea": 7,
+                  "pancake": 8, "scrambledegg": 9, "juice": 10}
+    one_hot = {}
+    temp_dict = copy.deepcopy(input_dict)
+    for i in range(len(activities)):
+        encode = len(activities) * [0]
+        encode[i] = 1
+        one_hot[i + 1] = encode
+
+    for filename, actions in temp_dict.items():
+        activity = get_activity(filename)
+        for i in range(len(actions)):
+            temp_dict[filename][i] = temp_dict[filename][i] + one_hot[activities[activity]]
+
+    return temp_dict
+
+
+def get_activity(filename):
+    # convert filename to activities
+    activity = (filename.split("_", 3)[-1]).split(".")[0]
+    return activity
+
+
 # get trainY (action class) for trainX
 def get_input_y(data_dict, input_dict):
     train_y = []
     for filename, frames in data_dict.items():
         frame_len = len(input_dict[filename])
         y = [input_dict[filename][frame_len - 1][0]]
-        for frame in frames[frame_len:]:
-            if frame[0] != y[-1]:
-                y.append(frame[0])
-        y.pop(0)
-
+        for frame in frames[frame_len:]: # todo: if no y exsit --> -1
+            #             print(frame, y)
+            if frame[0] != y[0]:
+                y[0] = frame[0]
+                break
         train_y.append(y)
     return train_y
 
@@ -99,12 +122,6 @@ def add_padding_to_x(data_dict, maxLen):
     return data_dict
 
 
-def add_padding_to_y(trainY, maxLen):
-    new_trainY = []
-    for frames in trainY:
-        temp = (maxLen - len(frames)) * [-1] + frames
-        new_trainY.append(temp)
-    return new_trainY
 
 
 def get_action_label():
@@ -128,13 +145,11 @@ def feature_encoding(input_dict, action_label):
     return input_dict
 
 
+
 def label_encoding(trainY, action_label):
     new_trainY = []
     for frames in trainY:
-        new = []
-        for each in frames:
-            new.append(action_label[each])
-        new_trainY.append(new)
+        new_trainY.append(action_label[frames[0]])
     return new_trainY
 
 
@@ -149,6 +164,43 @@ def get_sample_weight(train_x):
                 sample_weight[-1].append(1)
     return sample_weight
 
+
+from keras.models import Sequential
+from keras.layers import LSTM
+from tcn import TCN
+from tensorflow.keras.layers import Dense
+from tensorflow.keras import Input, Model
+
+
+def lstm_model(max_action_len, with_activity):
+    if not with_activity:
+        data_dimension = 47
+    else:
+        data_dimension = 57
+    model = Sequential()
+    model.add(LSTM(100, input_shape=(max_action_len, data_dimension), return_sequences=False))
+    model.add(Dense(47, activation='softmax'))
+    model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+    model.summary()
+    return model
+
+
+
+def tcn_model(max_action_len, with_activity):
+    if not with_activity:
+        data_dimension = 47
+    else:
+        data_dimension = 57
+    i = Input(shape=(max_action_len, data_dimension))
+    o = TCN(return_sequences=False)(i)  # The TCN layers are here.
+    o = Dense(47, activation = "softmax")(o)
+    model = Model(inputs=[i], outputs=[o])
+    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+    model.summary()
+    return model
+
+# transformer
 
 from keras.models import Sequential
 from keras.layers import Dense
@@ -235,76 +287,48 @@ class PositionEmbedding(layers.Layer):
         maxlen = tf.shape(x)[-1]
         positions = tf.range(start=0, limit=maxlen, delta=1)
         positions = self.pos_emb(positions)
-        # x = self.token_emb(x)
 
         return positions
 
-def transformer_model(max_action_len):
-    print(max_action_len)
-    ff_dim = 32 # Hidden layer size in feed forward network inside transformer
+def transformer_model(max_action_len, with_activity):
+    if not with_activity:
+        data_dimension = 47
+    else:
+        data_dimension = 57
+    ff_dim = 32  # Hidden layer size in feed forward network inside transformer
 
-    inputs = layers.Input(shape=(max_action_len,47))
-    transformer_block = TransformerBlock(47, 1, ff_dim)
+    inputs = layers.Input(shape=(max_action_len, data_dimension))
+    transformer_block = TransformerBlock(data_dimension, 1, ff_dim)
     x = transformer_block(inputs)
     x = layers.Dense(64, activation="relu")(x)
+    x = layers.Flatten()(x)
     outputs = layers.Dense(47, activation="softmax")(x)
-
     model = keras.Model(inputs=inputs, outputs=outputs)
-    model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'],sample_weight_mode = "temporal")
+    model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'],
+                  sample_weight_mode="temporal")
     # sample_weight_mode = "temporal"
     model.summary()
     return model
 
-
 # cross validation
 def train_model(trainX, trainY, model, sample_weight):
-    sample_weight = np.array(sample_weight)
-    model.fit(np.array(trainX), np.array(trainY), epochs=20, batch_size=128,sample_weight=sample_weight)
-    # sample_weight=sample_weight
+    model.fit(np.array(trainX), np.array(trainY), epochs=20, batch_size=128)
 
 
 def evaluation(testX, testY, model, max_timesteps):
     predictions = model.predict(testX)
-    #     print(predictions)
     results = []
     count = 0
-    accuracy_list = []
     for i in range(len(predictions)):
-        each_video = []
-        for j in range(len(predictions[i])):
-            result = np.array([0] * 47)
-            index = predictions[i][j].argmax(axis=-1)
-            result[index] = 1
-            each_video.append(result)
-        results.append(each_video)
+        result = np.array([0] * 47)
+        index = predictions[i].argmax(axis=-1)
+        result[index] = 1
+        pre = metrics.accuracy_score(result, testY[i])
+        if pre == 1:
+            count += 1
+    print(count / len(testY))
+    return count / len(testY)
 
-    # delete paddings
-    for i in range(len(testY)):
-        count = 0
-        for j in range(len(testY[i])):
-            if (testY[i][j] == 47 * [0]).all():
-                count += 1
-        testY[i] = testY[i][count:]
-        results[i] = results[i][count:]
-
-    # max number of actions in the output
-    for i in range(max_timesteps):
-        correct = 0
-        valid = 0
-        # loop each video
-        for j in range(len(testY)):
-            if len(testY[j]) > i:
-                if not (results[j][i] == 47 * [0]).all():
-                    valid += 1
-                    if (testY[j][i] == results[j][i]).all():
-                        correct += 1
-        if valid == 0:
-            accuracy_list.append(0)
-            print("timestep", i + 1, ":", 0, "     (valid: 0)")
-        else:
-            accuracy_list.append(correct / valid)
-            print("timestep", i + 1, ":", correct / valid, "    correct/valid: ", correct, "/", valid)
-    return (accuracy_list)
 
 
 def cross_validation(input_dict, encoded_y, model, max_timesteps):
@@ -316,6 +340,7 @@ def cross_validation(input_dict, encoded_y, model, max_timesteps):
     # s3: P29 – P41
     # s4: P42 – P54
     count = 0
+    print(len(input_dict))
     for filename, frames in input_dict.items():
         if int(filename[1:3]) <= 15:
             s1_x.append(input_dict[filename])
@@ -357,27 +382,21 @@ def cross_validation(input_dict, encoded_y, model, max_timesteps):
         train_model(trainX, trainY, model, sample_weight)
         if final_acc == []:
             final_acc = evaluation(testX, testY, model, max_timesteps)
-
         else:
-            final_acc = list(map(add, final_acc, evaluation(testX, testY, model, max_timesteps)))
+            final_acc += evaluation(testX, testY, model, max_timesteps)
     #         print(final_acc)
-    final_acc = [i / 4 for i in final_acc]
+    final_acc = final_acc / 4
     return (final_acc)
 
 
-def display_acc(results):
-
+def display_acc(results, model_name, w_or_wo):
     # loop through result for each input proportion
     for proportion, acc in results.items():
-        count = 0
-        print("| Input: WO_Activity  |Input(%): ", proportion * 100)
 
-
-        for i in range(len(acc)):
-            print(round(acc[i], 5), " ", end='')
-            count += 1
+        print("Input(%): ", proportion * 100)
+        print("Model: ", model_name, "     With_Activity: ", w_or_wo, "      Accuracy: ", round(acc, 5))
         print("")
-    print("")
+
 
 
 def run_model():
@@ -385,9 +404,19 @@ def run_model():
     data_dict = cut_zeros(data_dict)
     max_action_len = find_max_action_length(data_dict)
     action_label = get_action_label()
-    model = transformer_model(max_action_len)
-    results = {}
+    wo_lstm = lstm_model(max_action_len, 0)
+    w_lstm = lstm_model(max_action_len, 1)
+    wo_tcn = tcn_model(max_action_len, 0)
+    w_tcn = tcn_model(max_action_len, 1)
+    wo_transformer = transformer_model(max_action_len, 0)
+    w_transformer = transformer_model(max_action_len, 1)
 
+    wo_lstm_results = {}
+    w_lstm_results = {}
+    wo_tcn_results = {}
+    w_tcn_results = {}
+    wo_transformer_results = {}
+    w_transformer_results = {}
     # get input data with different proportion
     input_proportion = [0.1, 0.2, 0.3, 0.4, 0.5]
     # input_proportion = [0.1]
@@ -396,12 +425,33 @@ def run_model():
         train_y = get_input_y(data_dict, input_dict)
         input_dict = frames_to_action(input_dict)
         input_dict = add_padding_to_x(input_dict, max_action_len)
-        train_y = add_padding_to_y(train_y, max_action_len)
-        encoded_dict = feature_encoding(input_dict, action_label)
+        # train_y = add_padding_to_y(train_y, max_action_len)
         encoded_y = np.array(label_encoding(train_y, action_label))
-        result = cross_validation(encoded_dict, encoded_y, model, max_action_len)
-        results[proportion] = result
-    display_acc(results)
+        wo_activity_input = feature_encoding(input_dict, action_label)
+        w_activity_input = add_activity(wo_activity_input)
 
+        #lstm
+        # wo_lstm_result = cross_validation(wo_activity_input, encoded_y, wo_lstm, max_action_len)
+        # wo_lstm_results[proportion] = wo_lstm_result
+        # w_lstm_result = cross_validation(w_activity_input, encoded_y, w_lstm, max_action_len)
+        # w_lstm_results[proportion] = w_lstm_result
 
+        #tcn
+        # wo_tcn_result = cross_validation(wo_activity_input, encoded_y, wo_tcn, max_action_len)
+        # wo_tcn_results[proportion] = wo_tcn_result
+        # w_tcn_result = cross_validation(w_activity_input, encoded_y, w_tcn, max_action_len)
+        # w_tcn_results[proportion] = w_tcn_result
+
+        #transformer
+        wo_transformer_result = cross_validation(wo_activity_input, encoded_y, wo_transformer, max_action_len)
+        wo_transformer_results[proportion] = wo_transformer_result
+        w_transformer_result = cross_validation(w_activity_input, encoded_y, w_transformer, max_action_len)
+        w_transformer_results[proportion] = w_transformer_result
+
+    # display_acc(wo_lstm_results, "LSTM", "No")
+    # display_acc(w_lstm_results, "LSTM", "Yes")
+    # display_acc(wo_tcn_results, "TCN", "No")
+    # display_acc(w_tcn_results, "TCN", "Yes")
+    display_acc(wo_transformer_results, "Transformer", "No")
+    display_acc(w_transformer_results, "Transformer", "Yes")
 run_model()
