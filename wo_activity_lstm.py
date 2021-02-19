@@ -153,16 +153,26 @@ from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import LSTM, RepeatVector
 from keras.layers import Dropout, Masking, TimeDistributed, Activation
-
+from tensorflow.keras import Input, Model
 
 def lstm_model(max_action_len):
-    model = Sequential()
-    # model.add(Masking(mask_value=47 * [0], input_shape=(max_action_len, 47)))
-    model.add(LSTM(512, input_shape=(max_action_len, 47), return_sequences=True))  # todo
-    model.add(LSTM(256, return_sequences=True))
-    # model.add(RepeatVector(max_action_len))
-    model.add(LSTM(64, return_sequences=True))
-    model.add(TimeDistributed(Dense(47, activation="softmax")))
+    # model = Sequential()
+    # # model.add(Masking(mask_value=47 * [0], input_shape=(max_action_len, 47)))
+    # model.add(LSTM(512, input_shape=(max_action_len, 47), return_sequences=True))  # todo
+    # model.add(LSTM(256, return_sequences=True))
+    # # model.add(RepeatVector(max_action_len))
+    # model.add(LSTM(64, return_sequences=True))
+    # model.add(TimeDistributed(Dense(47, activation="softmax")))
+    # model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'],
+    #               sample_weight_mode="temporal")
+    # model.summary()
+    #
+    i = Input(shape=(max_action_len,47))
+    o = LSTM(512, return_sequences=True) (i) # todo
+    o = LSTM(256, return_sequences=True)(o)
+    o = LSTM(64, return_sequences=True)(o)
+    o = TimeDistributed(Dense(47, activation="softmax"))(o)
+    model = Model(inputs = [i], outputs = [o])
     model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'],
                   sample_weight_mode="temporal")
     model.summary()
@@ -307,6 +317,7 @@ def run_model():
     input_proportion = [0.1, 0.2, 0.3, 0.4, 0.5]
     # input_proportion = [0.1]
     for proportion in input_proportion:
+        model = lstm_model(max_action_len)
         input_dict = get_input_x(data_dict, proportion)
         train_y = get_input_y(data_dict, input_dict)
         input_dict = frames_to_action(input_dict)

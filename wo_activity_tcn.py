@@ -174,7 +174,7 @@ def tcn_model(max_action_len):
 def train_model(trainX, trainY, model, sample_weight):
     sample_weight = np.array(sample_weight)
     model.fit(np.array(trainX), np.array(trainY), epochs=20, batch_size=128, sample_weight=sample_weight)
-
+    return model
 
 def evaluation(testX, testY, model, max_timesteps):
     predictions = model.predict(testX)

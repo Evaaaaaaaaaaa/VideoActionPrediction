@@ -349,3 +349,94 @@ Transformer without
 | timestep  11 : 0.25   | timestep  12 : 0.0    | timestep  13 : 0.0    | timestep  14 : 0.0    | timestep  15 : 0.0    |
 | timestep  16 : 0.0    | timestep  17 : 0.0    | timestep  18 : 0.0    | timestep  19 : 0.0    | timestep  20 : 0.0    |
 | timestep  21 : 0.0    | timestep  22 : 0.0    | timestep  23 : 0.0    |                       |                       |
+
+
+
+
+
+
+
+
+
+
+
+Model 3: Lstm
+Model:  LSTM      With_Activity:  No Goal accuracy
+0.83897  0.92506  0.95369  0.98682  1.0  
+Model:  LSTM      With_Activity:  No Next action segment accuracy
+0.68983  0.75618  0.78328  0.78767  0.85287  
+
+Model:  LSTM      With_Activity:  No Goal accuracy
+0.84746  0.92969  0.95369  0.99007  1.0  1.0  1.0  1.0  1.0  
+Model:  LSTM      With_Activity:  No Next action segment accuracy
+0.68951  0.74217  0.77708  0.78639  0.85469  0.85506  0.86214  0.87718  0.91791  
+
+
+
+accuracy :  443 / 503 = 0.8807157057654076
+Model:  TCN      With_Activity:  No Goal accuracy
+0.84785  0.928  0.95503  0.9876  0.9946  
+Model:  TCN      With_Activity:  No Next action segment accuracy
+0.73295  0.75415  0.76942  0.78953  0.84732  
+
+Model:  TCN      With_Activity:  No Goal accuracy
+0.8442  0.927  0.9503  0.98542  1.0  1.0  1.0  1.0  1.0  
+Model:  TCN      With_Activity:  No Next action segment accuracy
+0.71785  0.76558  0.78705  0.79674  0.84694  0.85714  0.85889  0.88595  0.90539 
+
+Model:  Transformer      With_Activity:  No Goal accuracy
+0.84517  0.93235  0.95946  0.99007  1.0  
+Model:  Transformer      With_Activity:  No Next action segment accuracy
+0.72026  0.75578  0.76748  0.78532  0.85234 
+
+Model:  Transformer      With_Activity:  No Goal accuracy
+0.84525  0.92755  0.96065  0.99007  1.0  1.0  1.0  1.0  1.0  
+Model:  Transformer      With_Activity:  No Next action segment accuracy
+0.72453  0.75736  0.7736  0.79594  0.84205  0.85538  0.86157  0.8721  0.90466  
+
+
+
+
+
+Model 1:
+
+ Model:  LSTM      With_Activity:  No  Goal accuracy
+0.56585  0.73605  0.78259  0.80516  0.85374  
+Model:  LSTM      With_Activity:  No Next action segment accuracy
+0.77651  0.92723  0.95768  0.9876  0.99769  
+
+
+
+Model:  TCN      With_Activity:  No         action accuracy
+0.73515  0.72962  0.76201  0.78995  0.84733  
+Model:  TCN      With_Activity:  No        goal
+0.83203  0.93103  0.95593  0.99007  0.99884  
+
+Model:  Transformer      With_Activity:  No         action accuracy
+0.72744  0.73834  0.76137  0.78949  0.84894  
+Model:  Transformer      With_Activity:  No        goal
+0.85564  0.92617  0.96256  0.98682  1.0 
+
+
+
+
+
+model3: last
+Model:  LSTM      With_Activity:  No         action accuracy
+0.66615  0.72019  0.77246  0.78519  0.85001  
+Model:  LSTM      With_Activity:  No        goal
+0.84439  0.93328  0.96166  0.97732  0.99872  
+
+Model:  TCN      With_Activity:  No         action accuracy
+0.69952  0.74102  0.77506  0.79056  0.85438  
+Model:  TCN      With_Activity:  No        goal
+0.85546  0.92397  0.94735  0.99007  1.0  
+
+accuracy :  443 / 503 = 0.8807157057654076
+accuracy :  503 / 503 = 1.0
+Model:  LSTM      With_Activity:  No        goal
+0.69945  0.73893  0.76992  0.79352  0.85041  
+Model:  LSTM      With_Activity:  No         action accuracy
+0.85355  0.92466  0.95961  0.99007  1.0  
+
+Process finished with exit code 0
