@@ -210,9 +210,10 @@ def lstm_model(max_action_len, with_activity):
     else:
         data_dimension = 57
     model = Sequential()
-    model.add(LSTM(100, input_shape=(max_action_len, data_dimension), return_sequences=False))
+    model.add(LSTM(64, input_shape=(max_action_len, data_dimension), return_sequences=True))
+    model.add(LSTM(32, input_shape=(max_action_len, data_dimension), return_sequences=True))
+    model.add(LSTM(16, input_shape=(max_action_len, data_dimension), return_sequences=True))
     model.add(Dense(47, activation='softmax'))
-
     model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
     model.summary()
     return model
@@ -225,7 +226,7 @@ def tcn_model(max_action_len, with_activity):
         data_dimension = 57
     i = Input(shape=(max_action_len, data_dimension))
     o = TCN(128, return_sequences=True)(i)  # The TCN layers are here.
-    o = TCN(64, return_sequences=False)(o)
+    o = TCN(64, return_sequences=False)(i)
     o = Dense(47, activation="softmax")(o)
     model = Model(inputs=[i], outputs=[o])
     model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
@@ -328,7 +329,6 @@ class TokenAndPositionEmbedding(layers.Layer):
         return positions
 
 
-
 def transformer_model(max_action_len, with_activity):
     if not with_activity:
         data_dimension = 47
@@ -339,10 +339,12 @@ def transformer_model(max_action_len, with_activity):
     inputs = layers.Input(shape=(max_action_len, data_dimension))
     transformer_block = TransformerBlock(data_dimension, 1, ff_dim)
     x = transformer_block(inputs)
+    x = transformer_block(x)
+    x = transformer_block(x)
     # x = layers.GlobalAveragePooling1D()(x)
     # x = layers.Dropout(0.1)(x)
-    x = layers.Dense(128, activation="relu")(x)
-    x = layers.Dense(64, activation="relu")(x)
+    # x = layers.Dense(128, activation="relu")(x)
+    # x = layers.Dense(64, activation="relu")(x)
     x = layers.Flatten()(x)
     outputs = layers.Dense(47, activation="softmax")(x)
     model = keras.Model(inputs=inputs, outputs=outputs)
@@ -351,7 +353,6 @@ def transformer_model(max_action_len, with_activity):
     # sample_weight_mode = "temporal"
     model.summary()
     return model
-
 
 
 # cross validation
@@ -441,9 +442,8 @@ def cross_validation(input_dict, encoded_y, model, max_timesteps):
         testY = copy.deepcopy(splits_y[i])
         #         print(np.array(trainX).shape, np.array(trainY).shape,)
         sample_weight = get_sample_weight(trainX)
-        m = model
-        train_model(trainX, trainY, m, sample_weight)
-        final_acc += evaluation(testX, testY, m, max_timesteps)
+        train_model(trainX, trainY, model, sample_weight)
+        final_acc += evaluation(testX, testY, model, max_timesteps)
     #         print(final_acc)
     final_acc = final_acc / 4
     return (final_acc)
@@ -466,10 +466,10 @@ def run_model():
     action_label = get_action_label()
     wo_lstm = lstm_model(max_action_len, 0)
     w_lstm = lstm_model(max_action_len, 1)
-    # wo_tcn = tcn_model(max_action_len, 0)
-    # w_tcn = tcn_model(max_action_len, 1)
-    # wo_transformer = transformer_model(max_action_len, 0)
-    # w_transformer = transformer_model(max_action_len, 1)
+    wo_tcn = tcn_model(max_action_len, 0)
+    w_tcn = tcn_model(max_action_len, 1)
+    wo_transformer = transformer_model(max_action_len, 0)
+    w_transformer = transformer_model(max_action_len, 1)
 
     wo_lstm_results = {}
     w_lstm_results = {}
@@ -493,29 +493,29 @@ def run_model():
         w_activity_input = add_activity(wo_activity_input)
 
         # # # # lstm
-        wo_lstm_result = cross_validation(wo_activity_input, encoded_y, wo_lstm, max_action_len)
-        wo_lstm_results[proportion] = wo_lstm_result
-        w_lstm_result = cross_validation(w_activity_input, encoded_y, w_lstm, max_action_len)
-        w_lstm_results[proportion] = w_lstm_result
-        #
-        # # tcn
-        # wo_tcn_result = cross_validation(wo_activity_input, encoded_y, wo_tcn, max_action_len)
-        # wo_tcn_results[proportion] = wo_tcn_result
+        # wo_lstm_result = cross_validation(wo_activity_input, encoded_y, wo_lstm, max_action_len)
+        # # wo_lstm_results[proportion] = wo_lstm_result
+        # w_lstm_result = cross_validation(w_activity_input, encoded_y, w_lstm, max_action_len)
+        # w_lstm_results[proportion] = w_lstm_result
+        # #
+        # # # tcn
+        # # wo_tcn_result = cross_validation(wo_activity_input, encoded_y, wo_tcn, max_action_len)
+        # # wo_tcn_results[proportion] = wo_tcn_result
         # w_tcn_result = cross_validation(w_activity_input, encoded_y, w_tcn, max_action_len)
         # w_tcn_results[proportion] = w_tcn_result
-        #
+        # #
         # # transformer
         # wo_transformer_result = cross_validation(wo_activity_input, encoded_y, wo_transformer, max_action_len)
         # wo_transformer_results[proportion] = wo_transformer_result
-        # w_transformer_result = cross_validation(w_activity_input, encoded_y, w_transformer, max_action_len)
-        # w_transformer_results[proportion] = w_transformer_result
+        w_transformer_result = cross_validation(w_activity_input, encoded_y, w_transformer, max_action_len)
+        w_transformer_results[proportion] = w_transformer_result
     #
-    display_acc(wo_lstm_results, "LSTM", "No")
+    # display_acc(wo_lstm_results, "LSTM", "No")
     display_acc(w_lstm_results, "LSTM", "Yes")
     # display_acc(wo_tcn_results, "TCN", "No")
-    # # display_acc(w_tcn_results, "TCN", "Yes")
+    display_acc(w_tcn_results, "TCN", "Yes")
     # display_acc(wo_transformer_results, "Transformer", "No")
-    # display_acc(w_transformer_results, "Transformer", "Yes")
+    display_acc(w_transformer_results, "Transformer", "Yes")
 
 
 run_model()

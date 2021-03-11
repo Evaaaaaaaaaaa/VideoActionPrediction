@@ -118,7 +118,7 @@ def frames_to_action(input_dict):
             else:
                 if frame != action_list[-1]:
                     action_list.append(frame)
-            input_dict[filename] = action_list
+        input_dict[filename] = action_list
     return input_dict
 
 
@@ -189,28 +189,34 @@ from tensorflow.keras.layers import Dense
 from tensorflow.keras import Input, Model
 
 
-def lstm_model(max_action_len, with_activity):
+def lstm_model(max_action_len, with_activity, predict_goal):
     if not with_activity:
         data_dimension = 10
     else:
         data_dimension = 17
     model = Sequential()
     model.add(LSTM(100, input_shape=(max_action_len, data_dimension), return_sequences=False))
-    model.add(Dense(10, activation='softmax'))
+    if predict_goal:
+        model.add(Dense(7, activation='softmax'))
+    else:
+        model.add(Dense(10, activation='softmax'))
     model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
     model.summary()
     return model
 
 
-def tcn_model(max_action_len, with_activity):
+def tcn_model(max_action_len, with_activity,predict_goal):
     if not with_activity:
         data_dimension = 10
     else:
         data_dimension = 17
     i = Input(shape=(max_action_len, data_dimension))
     o = TCN(128, return_sequences=True)(i)  # The TCN layers are here.
-    o = TCN(64, return_sequences=False)(i)
-    o = Dense(10, activation="softmax")(o)
+    o = TCN(64, return_sequences=False)(o)
+    if predict_goal:
+        o = Dense(7, activation="softmax")(o)
+    else:
+        o = Dense(10, activation="softmax")(o)
     model = Model(inputs=[i], outputs=[o])
     model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
@@ -309,7 +315,7 @@ class TransformerBlock(layers.Layer):
 #         return positions
 
 
-def transformer_model(max_action_len, with_activity):
+def transformer_model(max_action_len, with_activity, predict_goal):
     if not with_activity:
         data_dimension = 10
     else:
@@ -324,7 +330,10 @@ def transformer_model(max_action_len, with_activity):
     x = layers.Dense(128, activation="relu")(x)
     x = layers.Dense(64, activation="relu")(x)
     x = layers.Flatten()(x)
-    outputs = layers.Dense(10, activation="softmax")(x)
+    if predict_goal:
+        outputs = layers.Dense(7, activation="softmax")(x)
+    else:
+        outputs = layers.Dense(10, activation="softmax")(x)
     model = keras.Model(inputs=inputs, outputs=outputs)
     model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'],
                   sample_weight_mode="temporal")
@@ -353,9 +362,11 @@ def train_model(trainX, trainY, model, sample_weight):
 #     print(count / len(testY))
 #     return count / len(testY)
 
-def evaluation(testX, testY, model, max_timesteps):
-
-    length = 10
+def evaluation(testX, testY, model, max_timesteps, is_goal):
+    if is_goal:
+        length = 7
+    else:
+        length = 10
     predictions = model.predict(testX)
     #     print(predictions)
     results = []
@@ -379,102 +390,165 @@ def evaluation(testX, testY, model, max_timesteps):
 
 
 
-def cross_validation(input_dict, action_y, model, max_timesteps):
+def cross_validation(wo_input_dict, w_input_dict, goal_y, action_y, wo_model, w_model, max_timesteps, is_goal):
 
     file_count = 0
-    s1_train_x, s2_train_x, s3_train_x, s4_train_x = [], [], [], []
+    s1_train_wo_x, s2_train_wo_x, s3_train_wo_x, s4_train_wo_x = [], [], [], []
+    s1_train_w_x, s2_train_w_x, s3_train_w_x, s4_train_w_x = [], [], [], []
     s1_train_action_y, s2_train_action_y, s3_train_action_y, s4_train_action_y = [], [], [], []
+    s1_train_goal_y, s2_train_goal_y, s3_train_goal_y, s4_train_goal_y = [], [], [], []
 
-    s1_test_x,s2_test_x,s3_test_x,s4_test_x = [], [], [], []
+    s1_test_wo_x,s2_test_wo_x,s3_test_wo_x,s4_test_wo_x = [], [], [], []
+    s1_test_w_x, s2_test_w_x, s3_test_w_x, s4_test_w_x = [], [], [], []
     s1_test_action_y,s2_test_action_y,s3_test_action_y,s4_test_action_y = [], [], [], []
+    s1_test_goal_y, s2_test_goal_y, s3_test_goal_y, s4_test_goal_y = [], [], [], []
     count = 0
 
-    for filename, frames in input_dict.items():
+    for filename, frames in wo_input_dict.items():
+        print(filename[0:2])
         if filename[0:2] == "S1":
-            s1_test_x.append(input_dict[filename])
+            s1_test_wo_x.append(wo_input_dict[filename])
+            s1_test_w_x.append(w_input_dict[filename])
             s1_test_action_y.append(action_y[file_count])
+            s1_test_goal_y.append(goal_y[file_count])
 
-            s2_train_x.append(input_dict[filename])
+            s2_train_wo_x.append(wo_input_dict[filename])
+            s2_train_w_x.append(w_input_dict[filename])
             s2_train_action_y.append(action_y[file_count])
+            s2_train_goal_y.append(goal_y[file_count])
 
-            s3_train_x.append(input_dict[filename])
+            s3_train_wo_x.append(wo_input_dict[filename])
+            s3_train_w_x.append(w_input_dict[filename])
             s3_train_action_y.append(action_y[file_count])
+            s3_train_goal_y.append(goal_y[file_count])
 
-            s4_train_x.append(input_dict[filename])
+            s4_train_wo_x.append(wo_input_dict[filename])
+            s4_train_w_x.append(w_input_dict[filename])
             s4_train_action_y.append(action_y[file_count])
+            s4_train_goal_y.append(goal_y[file_count])
 
         elif filename[0:2] == "S2":
-            s2_test_x.append(input_dict[filename])
+            s2_test_wo_x.append(wo_input_dict[filename])
+            s2_test_w_x.append(w_input_dict[filename])
             s2_test_action_y.append(action_y[file_count])
+            s2_test_goal_y.append(goal_y[file_count])
 
-            s1_train_x.append(input_dict[filename])
+            s1_train_wo_x.append(wo_input_dict[filename])
+            s1_train_w_x.append(w_input_dict[filename])
             s1_train_action_y.append(action_y[file_count])
+            s1_train_goal_y.append(goal_y[file_count])
 
-            s3_train_x.append(input_dict[filename])
+            s3_train_wo_x.append(wo_input_dict[filename])
+            s3_train_w_x.append(w_input_dict[filename])
             s3_train_action_y.append(action_y[file_count])
+            s3_train_goal_y.append(goal_y[file_count])
 
-            s4_train_x.append(input_dict[filename])
+            s4_train_wo_x.append(wo_input_dict[filename])
+            s4_train_w_x.append(w_input_dict[filename])
             s4_train_action_y.append(action_y[file_count])
-
+            s4_train_goal_y.append(goal_y[file_count])
         elif filename[0:2] == "S3":
-            s3_test_x.append(input_dict[filename])
+            s3_test_wo_x.append(wo_input_dict[filename])
+            s3_test_w_x.append(w_input_dict[filename])
             s3_test_action_y.append(action_y[file_count])
+            s3_test_goal_y.append(goal_y[file_count])
 
-            s1_train_x.append(input_dict[filename])
+            s1_train_wo_x.append(wo_input_dict[filename])
+            s1_train_w_x.append(w_input_dict[filename])
             s1_train_action_y.append(action_y[file_count])
+            s1_train_goal_y.append(goal_y[file_count])
 
-            s2_train_x.append(input_dict[filename])
+            s2_train_wo_x.append(wo_input_dict[filename])
+            s2_train_w_x.append(w_input_dict[filename])
             s2_train_action_y.append(action_y[file_count])
+            s2_train_goal_y.append(goal_y[file_count])
 
-            s4_train_x.append(input_dict[filename])
+            s4_train_wo_x.append(wo_input_dict[filename])
+            s4_train_w_x.append(w_input_dict[filename])
             s4_train_action_y.append(action_y[file_count])
-
+            s4_train_goal_y.append(goal_y[file_count])
         elif filename[0:2] == "S4":
-            s4_test_x.append(input_dict[filename])
+            s4_test_wo_x.append(wo_input_dict[filename])
+            s4_test_w_x.append(w_input_dict[filename])
             s4_test_action_y.append(action_y[file_count])
+            s4_test_goal_y.append(goal_y[file_count])
 
-            s1_train_x.append(input_dict[filename])
+            s1_train_wo_x.append(wo_input_dict[filename])
+            s1_train_w_x.append(w_input_dict[filename])
             s1_train_action_y.append(action_y[file_count])
+            s1_train_goal_y.append(goal_y[file_count])
 
-            s2_train_x.append(input_dict[filename])
+            s2_train_wo_x.append(wo_input_dict[filename])
+            s2_train_w_x.append(w_input_dict[filename])
             s2_train_action_y.append(action_y[file_count])
+            s2_train_goal_y.append(goal_y[file_count])
 
-            s3_train_x.append(input_dict[filename])
+            s3_train_wo_x.append(wo_input_dict[filename])
+            s3_train_w_x.append(w_input_dict[filename])
             s3_train_action_y.append(action_y[file_count])
+            s3_train_goal_y.append(goal_y[file_count])
 
         file_count += 1
 
-    splits_train_x = [s1_train_x, s2_train_x, s3_train_x, s4_train_x]
+    splits_train_wo_x = [s1_train_wo_x, s2_train_wo_x, s3_train_wo_x, s4_train_wo_x]
+    splits_train_w_x = [s1_train_w_x, s2_train_w_x, s3_train_w_x, s4_train_w_x]
     splits_train_action_y = [s1_train_action_y, s2_train_action_y, s3_train_action_y, s4_train_action_y]
-    splits_test_x = [s1_test_x, s2_test_x, s3_test_x, s4_test_x]
-    splits_test_action_y = [s1_test_action_y, s2_test_action_y, s3_test_action_y, s4_test_action_y]
+    splits_train_goal_y = [s1_train_goal_y, s2_train_goal_y, s3_train_goal_y, s4_train_goal_y]
 
+    splits_test_wo_x = [s1_test_wo_x, s2_test_wo_x, s3_test_wo_x, s4_test_wo_x]
+    splits_test_w_x = [s1_test_w_x, s2_test_w_x, s3_test_w_x, s4_test_w_x]
+    splits_test_action_y = [s1_test_action_y, s2_test_action_y, s3_test_action_y, s4_test_action_y]
+    splits_test_goal_y = [s1_test_goal_y, s2_test_goal_y, s3_test_goal_y, s4_test_goal_y]
+
+    goal_acc = 0
     action_acc = 0
     predicted_goal_list = []
     predicted_action_list = []
     for i in range(4):
-        trainX = splits_train_x[i]
-        trainY = splits_train_action_y[i]
+        trainX1 = splits_train_w_x[i]
+        trainY1 = splits_train_action_y[i]
+        testY1 = splits_test_action_y[i]
+        trainX2 = splits_train_wo_x[i]
+        trainY2 = splits_train_goal_y[i]
+        testX2 = splits_test_wo_x[i]
+        testY2 = splits_test_goal_y[i]
 
-        testX = splits_test_x[i]
-        testY = splits_test_action_y[i]
+        sample_weight = get_sample_weight(trainX1)
+        train_model(trainX1, trainY1, w_model, sample_weight)
+        train_model(trainX2, trainY2, wo_model, sample_weight)
+        temp_goal_acc, predicted_goal = evaluation(testX2, testY2, wo_model, max_timesteps, 1)
 
-        sample_weight = get_sample_weight(trainX)
-        train_model(trainX, trainY, model, sample_weight)
-        temp_action_acc, predicted_action = evaluation(testX, testY, model, max_timesteps)
+        predicted_goal_list.append(predicted_goal)
+        goal_acc += temp_goal_acc
+        each_split = []
+        for j in range(len(testX2)):
+            each_video = []
+            for k in range(len(testX2[j])):  # todo if frame is padding, add [0]*10
+                if testX2[j][k] == 10 * [0]:
+                    each_video.append(testX2[j][k] + 7 * [0])
+                else:
+                    each_video.append(testX2[j][k] + predicted_goal_list[i][j].tolist())
+            each_split.append(each_video)
+        temp_action_acc, predicted_action = evaluation(each_split, testY1, w_model, max_timesteps, 0)
         predicted_action_list.append(predicted_action)
         action_acc += temp_action_acc
+    goal_acc = goal_acc / 4
     action_acc = action_acc / 4
-    return action_acc
+    print(goal_acc, action_acc)
+    return goal_acc, action_acc
 
 
 def display_acc(results, model_name, w_or_wo):
     # loop through result for each input proportion
 
-    print("Model: ", model_name, "     With_Activity: ", w_or_wo)
+    print("Model: ", model_name, "     With_Activity: ", w_or_wo, "Goal accuracy")
     for proportion, acc in results.items():
         #    print("Input(%): ", proportion * 100)
-        print(round(acc, 5), " ", end="")
+        print(round(acc[0], 5), " ", end="")
+    print("")
+    print("Model: ", model_name, "     With_Activity: ", w_or_wo, "Next action segment accuracy")
+    for proportion, acc in results.items():
+        print(round(acc[1], 5), " ", end="")
     print("")
 
 
@@ -482,12 +556,12 @@ def run_model():
     data_dict = import_data()
     max_action_len = find_max_action_length(data_dict)
     action_label = get_action_label()
-    wo_lstm = lstm_model(max_action_len, 0)
-    w_lstm = lstm_model(max_action_len, 1)
-    wo_tcn = tcn_model(max_action_len, 0)
-    w_tcn = tcn_model(max_action_len, 1)
-    wo_transformer = transformer_model(max_action_len, 0)
-    w_transformer = transformer_model(max_action_len, 1)
+    wo_lstm = lstm_model(max_action_len, 0,1)
+    w_lstm = lstm_model(max_action_len, 1,0)
+    wo_tcn = tcn_model(max_action_len, 0,1)
+    w_tcn = tcn_model(max_action_len, 1,0)
+    wo_transformer = transformer_model(max_action_len, 0,1)
+    w_transformer = transformer_model(max_action_len, 1,0)
 
     wo_lstm_results = {}
     w_lstm_results = {}
@@ -500,41 +574,39 @@ def run_model():
     # input_proportion = [0.1, 0.2, 0.3, 0.4, 0.5]
     input_proportion = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
     for proportion in input_proportion:
-        #     input_dict = get_input_x(data_dict, proportion)
-        #     train_y = get_input_y(data_dict, input_dict)
+
         input_dict, train_goal_y, train_action_y = get_input_x_y(data_dict, proportion)
         input_dict = frames_to_action(input_dict)
         input_dict = add_padding_to_x(input_dict, max_action_len)
-        # train_y = add_padding_to_y(train_y, max_action_len)
         encoded_goal_y = np.array(label_encoding(train_goal_y, action_label, 1))
         encoded_action_y = np.array(label_encoding(train_action_y, action_label, 0))
         wo_activity_input = feature_encoding(input_dict, action_label)
         w_activity_input = add_activity(wo_activity_input, encoded_goal_y)
 
         # # # # lstm
-        wo_lstm_result = cross_validation(wo_activity_input, encoded_action_y, wo_lstm, max_action_len)
-        wo_lstm_results[proportion] = wo_lstm_result
-        w_lstm_result = cross_validation(w_activity_input, encoded_action_y, w_lstm, max_action_len)
-        w_lstm_results[proportion] = w_lstm_result
+        wo_lstm_goal_acc, wo_lstm_action_acc = cross_validation(wo_activity_input, w_activity_input,encoded_goal_y, encoded_action_y,
+                                                                wo_lstm, w_lstm, max_action_len, 1)
+        print(wo_lstm_goal_acc, wo_lstm_action_acc)
+        wo_lstm_results[proportion] = [wo_lstm_goal_acc, wo_lstm_action_acc]
         #
-        # # tcn
-        wo_tcn_result = cross_validation(wo_activity_input, encoded_action_y, wo_lstm, max_action_len)
-        wo_tcn_results[proportion] = wo_tcn_result
-        w_tcn_result = cross_validation(w_activity_input, encoded_action_y, w_lstm, max_action_len)
-        w_tcn_results[proportion] = w_tcn_result
+        # tcn
+        wo_tcn_goal_acc, wo_tcn_action_acc = cross_validation(wo_activity_input, w_activity_input, encoded_goal_y, encoded_action_y,
+                                                              wo_tcn, w_tcn, max_action_len, 1)
+        wo_tcn_results[proportion] = [wo_tcn_goal_acc, wo_tcn_action_acc]
         #
         # # transformer
-        wo_transformer_result = cross_validation(wo_activity_input, encoded_action_y, wo_lstm, max_action_len)
-        wo_transformer_results[proportion] = wo_transformer_result
-        w_transformer_result = cross_validation(w_activity_input, encoded_action_y, w_lstm, max_action_len)
-        w_transformer_results[proportion] = w_transformer_result
+        wo_transformer_goal_acc, wo_transformer_action_acc = cross_validation(wo_activity_input, w_activity_input,
+                                                                              encoded_goal_y, encoded_action_y,
+                                                                              wo_transformer, w_transformer,
+                                                                              max_action_len, 1)
+        wo_transformer_results[proportion] = [wo_transformer_goal_acc, wo_transformer_action_acc]
     #
     display_acc(wo_lstm_results, "LSTM", "No")
-    display_acc(w_lstm_results, "LSTM", "Yes")
+    # display_acc(w_lstm_results, "LSTM", "Yes")
     display_acc(wo_tcn_results, "TCN", "No")
-    display_acc(w_tcn_results, "TCN", "Yes")
+    # display_acc(w_tcn_results, "TCN", "Yes")
     display_acc(wo_transformer_results, "Transformer", "No")
-    display_acc(w_transformer_results, "Transformer", "Yes")
+    # display_acc(w_transformer_results, "Transformer", "Yes")
 
 
 run_model()

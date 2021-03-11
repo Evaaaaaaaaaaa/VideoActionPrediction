@@ -6,6 +6,7 @@ import scipy.io
 import os
 import numpy as np
 import copy
+import statistics
 from operator import add
 
 
@@ -17,6 +18,7 @@ def import_data():
     for file in files:
         read = scipy.io.loadmat(path + file)
         data_dict[file] = read['labseqid']
+
     return data_dict
 
 
@@ -519,16 +521,16 @@ def run_model():
     data_dict = cut_zeros(data_dict)
     max_action_len = find_max_action_length(data_dict)
     action_label = get_action_label()
-    # wo_lstm = lstm_model(max_action_len)
+    wo_lstm = lstm_model(max_action_len)
     # wo_tcn = tcn_model(max_action_len)
-    wo_transformer = transformer_model(max_action_len)
+    # wo_transformer = transformer_model(max_action_len)
 
 
     wo_lstm_results = {}
     # w_lstm_results = {}
     wo_tcn_results = {}
     wo_transformer_results = {}
-
+    listt = []
     # get input data with different proportion
     # input_proportion = [0.1]
     input_proportion = [0.1, 0.2, 0.3, 0.4, 0.5]
@@ -546,10 +548,10 @@ def run_model():
 
 
         # # # lstm
-        # wo_lstm_action_acc, wo_lstm_goal_acc = cross_validation(wo_activity_input, encoded_goal_y, encoded_action_y,
-        #                                                         wo_lstm, max_action_len, 1)
-        # wo_lstm_results[proportion] = [wo_lstm_action_acc, wo_lstm_goal_acc]
-
+        wo_lstm_action_acc, wo_lstm_goal_acc = cross_validation(wo_activity_input, encoded_goal_y, encoded_action_y,
+                                                                wo_lstm, max_action_len, 1)
+        wo_lstm_results[proportion] = [wo_lstm_action_acc, wo_lstm_goal_acc]
+        listt.append(wo_lstm_action_acc)
         # # tcn
 
         # wo_tcn_action_acc, wo_tcn_goal_acc = cross_validation(wo_activity_input, encoded_goal_y, encoded_action_y,
@@ -557,12 +559,13 @@ def run_model():
         # wo_tcn_results[proportion] = [wo_tcn_action_acc, wo_tcn_goal_acc]
 
         # # transformer
-        wo_transformer_action_acc, wo_transformer_goal_acc = cross_validation(wo_activity_input, encoded_goal_y,
-                                                                              encoded_action_y,
-                                                                              wo_transformer, max_action_len, 1)
-        wo_transformer_results[proportion] = [wo_transformer_action_acc, wo_transformer_goal_acc]
+        # wo_transformer_action_acc, wo_transformer_goal_acc = cross_validation(wo_activity_input, encoded_goal_y,
+        #                                                                       encoded_action_y,
+        #                                                                       wo_transformer, max_action_len, 1)
+        # wo_transformer_results[proportion] = [wo_transformer_action_acc, wo_transformer_goal_acc]
 
-
+    wo_sd = statistics.stdev(wo_lstm_results)
+    print("wo activity sd: ", wo_sd)
     #
     # display_acc(wo_lstm_results, "LSTM", "No")
     # display_acc(wo_tcn_results, "TCN", "No")
