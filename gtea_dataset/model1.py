@@ -195,7 +195,7 @@ def lstm_model(max_action_len, with_activity):
     else:
         data_dimension = 17
     model = Sequential()
-    model.add(LSTM(100, input_shape=(max_action_len, data_dimension), return_sequences=False))
+    model.add(LSTM(128, input_shape=(max_action_len, data_dimension), return_sequences=False))
     model.add(Dense(10, activation='softmax'))
     model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
     model.summary()
@@ -336,7 +336,7 @@ def transformer_model(max_action_len, with_activity):
 # cross validation
 def train_model(trainX, trainY, model, sample_weight):
     print(np.array(trainX).shape, np.array(trainY).shape)
-    model.fit(np.array(trainX), np.array(trainY), epochs=20, batch_size=128)
+    model.fit(np.array(trainX), np.array(trainY), epochs=20, batch_size=128, shuffle = True)
 
 
 # def evaluation(testX, testY, model, max_timesteps):
@@ -518,16 +518,16 @@ def run_model():
         w_lstm_results[proportion] = w_lstm_result
         #
         # # tcn
-        wo_tcn_result = cross_validation(wo_activity_input, encoded_action_y, wo_lstm, max_action_len)
-        wo_tcn_results[proportion] = wo_tcn_result
-        w_tcn_result = cross_validation(w_activity_input, encoded_action_y, w_lstm, max_action_len)
-        w_tcn_results[proportion] = w_tcn_result
-        #
-        # # transformer
-        wo_transformer_result = cross_validation(wo_activity_input, encoded_action_y, wo_lstm, max_action_len)
-        wo_transformer_results[proportion] = wo_transformer_result
-        w_transformer_result = cross_validation(w_activity_input, encoded_action_y, w_lstm, max_action_len)
-        w_transformer_results[proportion] = w_transformer_result
+        # wo_tcn_result = cross_validation(wo_activity_input, encoded_action_y, wo_lstm, max_action_len)
+        # wo_tcn_results[proportion] = wo_tcn_result
+        # w_tcn_result = cross_validation(w_activity_input, encoded_action_y, w_lstm, max_action_len)
+        # w_tcn_results[proportion] = w_tcn_result
+        # #
+        # # # transformer
+        # wo_transformer_result = cross_validation(wo_activity_input, encoded_action_y, wo_lstm, max_action_len)
+        # wo_transformer_results[proportion] = wo_transformer_result
+        # w_transformer_result = cross_validation(w_activity_input, encoded_action_y, w_lstm, max_action_len)
+        # w_transformer_results[proportion] = w_transformer_result
     #
     display_acc(wo_lstm_results, "LSTM", "No")
     display_acc(w_lstm_results, "LSTM", "Yes")

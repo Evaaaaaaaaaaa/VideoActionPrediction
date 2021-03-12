@@ -228,15 +228,11 @@ from tensorflow.keras import Input, Model
 #
 def lstm_model(max_action_len):
     i = Input(shape=(max_action_len, 47))
-    # o = LSTM(512, return_sequences=True)(i)
-    # o = LSTM(256, return_sequences=True)(o)
     o = LSTM(128)(i)
     o1 = Dense(10, activation="softmax")(o)
     o1_repeat = RepeatVector(max_action_len)(o1)
     # # todo: i + o1_repeat concatenate
     o1_repeat = tf.concat([i, o1_repeat], -1)
-    # o2 = LSTM(512, return_sequences=True)(o1_repeat)
-    # o2 = LSTM(256, return_sequences=True)(o1_repeat)
     o2 = LSTM(128)(o1_repeat)
     o2 = Dense(47, activation="softmax")(o2)
     # o2 = Dense(47, activation="softmax")(o1)
@@ -382,8 +378,8 @@ def transformer_model(max_action_len):
 
 # cross validation
 def train_model(trainX, trainY, model, sample_weight):
-    print(np.array(trainX).shape, np.array(trainY[0]).shape,np.array(trainY[1]).shape )
-    model.fit(np.array(trainX), [np.array(trainY[0]), np.array(trainY[1])], epochs=20, batch_size=128)
+
+    model.fit(np.array(trainX), [np.array(trainY[0]), np.array(trainY[1])], epochs=20, batch_size=128, shuffle = True)
 
 
 # def evaluation(testX, testY, model, max_timesteps):
@@ -489,10 +485,10 @@ def cross_validation(input_dict, goal_y, action_y, model, max_timesteps, is_goal
         testY_goal = copy.deepcopy(splits_goal_y[i])
         testY_action = copy.deepcopy(splits_action_y[i])
         testY = [testY_action, testY_goal]
-        sample_weight = get_sample_weight(trainX)
+        # sample_weight = get_sample_weight(trainX)
 
         # train and evaluate the model
-        train_model(trainX, trainY, model, sample_weight)
+        # train_model(trainX, trainY, model, sample_weight)
         action_acc, goal_acc = evaluation(testX, testY, model, max_timesteps)
 
         final_action_acc += action_acc
@@ -522,8 +518,8 @@ def run_model():
     max_action_len = find_max_action_length(data_dict)
     action_label = get_action_label()
     wo_lstm = lstm_model(max_action_len)
-    # wo_tcn = tcn_model(max_action_len)
-    # wo_transformer = transformer_model(max_action_len)
+    wo_tcn = tcn_model(max_action_len)
+    wo_transformer = transformer_model(max_action_len)
 
 
     wo_lstm_results = {}
@@ -533,8 +529,31 @@ def run_model():
     listt = []
     # get input data with different proportion
     # input_proportion = [0.1]
-    input_proportion = [0.1, 0.2, 0.3, 0.4, 0.5]
-    # input_proportion = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+    input_proportion = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+    train_wo_x = []
+    train_y_goal = []
+    train_y_action = []
+    for proportion in input_proportion:
+        input_dict, train_goal_y, train_action_y = get_input_x_y(data_dict, proportion, 2)
+        input_dict = frames_to_action(input_dict)
+        input_dict = add_padding_to_x(input_dict, max_action_len)
+        # train_action_y= add_padding_to_y(train_action_y, max_action_len)
+        encoded_goal_y = np.array(label_encoding(train_goal_y, action_label, 1))
+        encoded_action_y = np.array(label_encoding(train_action_y, action_label, 0))
+        wo_activity_input = feature_encoding(input_dict, action_label)
+
+        temp_wo_x = []
+        for filename, frames in wo_activity_input.items():
+            temp_wo_x.append(wo_activity_input[filename])
+        train_wo_x.extend(temp_wo_x)
+
+        train_y_goal.extend(encoded_goal_y)
+        train_y_action.extend(encoded_action_y)
+    train_y = [train_y_action, train_y_goal]
+    sample_weight = get_sample_weight(train_wo_x)
+    train_model(train_wo_x, train_y, wo_lstm, sample_weight)
+    train_model(train_wo_x, train_y, wo_tcn, sample_weight)
+    train_model(train_wo_x, train_y, wo_transformer, sample_weight)
     for proportion in input_proportion:
         #     input_dict = get_input_x(data_dict, proportion)
         #     train_y = get_input_y(data_dict, input_dict)
@@ -554,21 +573,21 @@ def run_model():
         listt.append(wo_lstm_action_acc)
         # # tcn
 
-        # wo_tcn_action_acc, wo_tcn_goal_acc = cross_validation(wo_activity_input, encoded_goal_y, encoded_action_y,
-        #                                                       wo_tcn, max_action_len, 1)
-        # wo_tcn_results[proportion] = [wo_tcn_action_acc, wo_tcn_goal_acc]
+        wo_tcn_action_acc, wo_tcn_goal_acc = cross_validation(wo_activity_input, encoded_goal_y, encoded_action_y,
+                                                              wo_tcn, max_action_len, 1)
+        wo_tcn_results[proportion] = [wo_tcn_action_acc, wo_tcn_goal_acc]
 
-        # # transformer
-        # wo_transformer_action_acc, wo_transformer_goal_acc = cross_validation(wo_activity_input, encoded_goal_y,
-        #                                                                       encoded_action_y,
-        #                                                                       wo_transformer, max_action_len, 1)
-        # wo_transformer_results[proportion] = [wo_transformer_action_acc, wo_transformer_goal_acc]
+        # transformer
+        wo_transformer_action_acc, wo_transformer_goal_acc = cross_validation(wo_activity_input, encoded_goal_y,
+                                                                              encoded_action_y,
+                                                                              wo_transformer, max_action_len, 1)
+        wo_transformer_results[proportion] = [wo_transformer_action_acc, wo_transformer_goal_acc]
 
-    wo_sd = statistics.stdev(wo_lstm_results)
-    print("wo activity sd: ", wo_sd)
+    # wo_sd = statistics.stdev(wo_lstm_results)
+    # print("wo activity sd: ", wo_sd)
     #
-    # display_acc(wo_lstm_results, "LSTM", "No")
-    # display_acc(wo_tcn_results, "TCN", "No")
+    display_acc(wo_lstm_results, "LSTM", "No")
+    display_acc(wo_tcn_results, "TCN", "No")
     display_acc(wo_transformer_results, "Transformer", "No")
 
 

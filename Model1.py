@@ -65,7 +65,11 @@ def add_activity(input_dict):
 
     for filename, actions in temp_dict.items():
         activity = get_activity(filename)
+
         for i in range(len(actions)):
+            # if actions[i] == 47 * [0]:
+            #     temp_dict[filename][i] = actions[i] + 10*[0]
+            # else:
             temp_dict[filename][i] = temp_dict[filename][i] + one_hot[activities[activity]]
 
     return temp_dict
@@ -164,11 +168,14 @@ def lstm_model(max_action_len, with_activity):
         data_dimension = 47
     else:
         data_dimension = 57
-    model = Sequential()
-    model.add(LSTM(128, input_shape=(max_action_len, data_dimension), return_sequences=False))
-    model.add(Dense(47, activation='softmax'))
-    model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
-
+    i = Input(shape=(max_action_len, data_dimension))
+    # o = LSTM(128, return_sequences=True)(i)
+    # o = LSTM(256, return_sequences=True)(o)
+    o = LSTM(128)(i)
+    o = Dense(47, activation="softmax")(o)
+    model = Model(inputs=i, outputs=o)
+    model.compile(loss=['categorical_crossentropy', 'categorical_crossentropy'], optimizer='adam', metrics=['accuracy'],
+                  sample_weight_mode="temporal")
     model.summary()
     return model
 
@@ -180,7 +187,7 @@ def tcn_model(max_action_len, with_activity):
         data_dimension = 57
     i = Input(shape=(max_action_len, data_dimension))
     o = TCN(128, return_sequences=True)(i)  # The TCN layers are here.
-    o = TCN(64, return_sequences=False)(i)  # The TCN layers are here.
+    o = TCN(64, return_sequences=False)(o)  # The TCN layers are here.
     o = Dense(47, activation="softmax")(o)
     model = Model(inputs=[i], outputs=[o])
     model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
@@ -305,10 +312,10 @@ def transformer_model(max_action_len, with_activity):
 
 # cross validation
 def train_model(trainX, trainY, model, sample_weight):
-    model.fit(np.array(trainX), np.array(trainY), epochs=20, batch_size=128)
+    model.fit(np.array(trainX), np.array(trainY), epochs=20, batch_size=128, shuffle = True)
 
 
-def evaluation(testX, testY, model, max_timesteps):
+def evaluation(testX, testY, model):
     predictions = model.predict(testX)
     #     print(predictions)
     results = []
@@ -331,8 +338,41 @@ def evaluation(testX, testY, model, max_timesteps):
     print(len(results))
     return correct / len(results)
 
+#all_split_x = [[split1, split2, split3, split4],[...],[...]....]
+def cross_validation(all_split_x, all_split_y, model):
 
-def cross_validation(input_dict, encoded_y, model, max_timesteps):
+    train_all_fold_x = [[], [], [], []]
+    train_all_fold_y = [[], [], [], []]
+
+    test_all_fold_x = [[], [], [], []]
+    test_all_fold_y = [[], [], [], []]
+    train_y_fold = []
+    for i in range(9):
+        for j in range(4):
+            for k in range(4):
+                if j != k:
+
+                    train_all_fold_x[j].extend(copy.deepcopy(all_split_x[i][k]))
+                    train_all_fold_y[j].extend(copy.deepcopy(all_split_y[i][k]))
+
+            test_all_fold_x[j].append(copy.deepcopy(all_split_x[i][j]))
+            test_all_fold_y[j].append(copy.deepcopy(all_split_y[i][j]))
+    acc_list = [0]*9
+
+    # train for 4 splits, test for 4 splits for each of 0.1-0.9 (4*9 times)
+    for i in range(4):
+        # train 0.1-0.9 together
+        m = model
+        print(np.array(train_all_fold_x[i]).shape, np.array(train_all_fold_y[i]).shape)
+        m.fit(np.array(train_all_fold_x[i]), np.array(train_all_fold_y[i]), epochs=20, batch_size=128, shuffle=True)
+        # test each percentage
+        for j in range(9):
+            acc_list[j] += evaluation(test_all_fold_x[i][j], test_all_fold_y[i][j], m)
+    for i in range(len(acc_list)):
+        acc_list[i] /= 4
+
+    return acc_list
+def get_splits(input_dict, encoded_y):
     file_count = 0
     s1_x, s2_x, s3_x, s4_x = [], [], [], []
     s1_y, s2_y, s3_y, s4_y = [], [], [], []
@@ -341,7 +381,6 @@ def cross_validation(input_dict, encoded_y, model, max_timesteps):
     # s3: P29 – P41
     # s4: P42 – P54
     count = 0
-    print(len(input_dict))
     for filename, frames in input_dict.items():
         if int(filename[1:3]) <= 15:
             s1_x.append(input_dict[filename])
@@ -359,45 +398,18 @@ def cross_validation(input_dict, encoded_y, model, max_timesteps):
 
     splits_x = [s1_x, s2_x, s3_x, s4_x]
     splits_y = [s1_y, s2_y, s3_y, s4_y]
-    final_acc = 0
-    for i in range(4):
-        trainX = None
-        trainY = None
-        # for j in range(4):
-        #     if splits_x[j] != splits_x[i]:
-        #         if trainX == None:
-        #             trainX = copy.deepcopy(splits_x[j])
-        #         else:
-        #             trainX += copy.deepcopy(splits_x[j])
-        #
-        #     if splits_y[j] != splits_y[i]:
-        #         if trainY == None:
-        #             print(np.array(splits_y[j]).shape)
-        #             trainY = copy.deepcopy(splits_y[j])
-        #         else:
-        #             trainY += copy.deepcopy(splits_y[j])
-        testX = copy.deepcopy(splits_x[i])
-        testY = copy.deepcopy(splits_y[i])
-        # #         print(np.array(trainX).shape, np.array(trainY).shape,)
-        sample_weight = get_sample_weight(trainX)
-        train_model(trainX, trainY, model, sample_weight)
-        final_acc += evaluation(testX, testY, model, max_timesteps)
+
+    return splits_x, splits_y
+def display_acc(results, w_or_wo):
+    # loop through result for each input proportion\
+    print("Model 1", "With Activity: ", w_or_wo)
+    for i in range(9):
+        print("proportion: ", (i+1)/100)
+        print(round(results[0][i], 5))
+        print(round(results[1][i], 5))
+        print(round(results[2][i], 5))
 
 
-    #         print(final_acc)
-    final_acc = final_acc / 4
-
-    return (final_acc)
-
-
-def display_acc(results, model_name, w_or_wo):
-    # loop through result for each input proportion
-    for proportion, acc in results.items():
-        print("Input(%): ", proportion * 100)
-        print("Model: ", model_name, "     With_Activity: ", w_or_wo, "      Accuracy: ", round(acc, 5))
-        print("")
-
-from sklearn.utils import shuffle
 def run_model():
     data_dict = import_data()
     data_dict = cut_zeros(data_dict)
@@ -410,48 +422,12 @@ def run_model():
     wo_transformer = transformer_model(max_action_len, 0)
     w_transformer = transformer_model(max_action_len, 1)
 
-    wo_lstm_results = {}
-    w_lstm_results = {}
-    wo_tcn_results = {}
-    w_tcn_results = {}
-    wo_transformer_results = {}
-    w_transformer_results = {}
-    # get input data with different proportion
 
-    input_proportion = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6,0.7,0.8,0.9]
-    train_wo_x = []
-    train_w_x = []
-    train_y = []
-    for i in input_proportion:
-        input_dict = get_input_x(data_dict, i)
-        train_y_ = get_input_y(data_dict, input_dict)
-        input_dict = frames_to_action(input_dict)
-        input_dict = add_padding_to_x(input_dict, max_action_len)
-        encoded_y = np.array(label_encoding(train_y_, action_label))
-        wo_activity_input = feature_encoding(input_dict, action_label)
-        w_activity_input = add_activity(wo_activity_input)
-        temp_wo_x = []
-        temp_w_x = []
-        for filename, frames in wo_activity_input.items():
-            temp_wo_x.append(wo_activity_input[filename])
-        train_wo_x.extend(temp_wo_x)
-        for filename, frames in w_activity_input.items():
-            temp_w_x.append(w_activity_input[filename])
-        train_w_x.extend(temp_w_x)
-        train_y.extend(encoded_y)
-    train_wo_x, train_y = shuffle(train_wo_x, train_y, random_state=0)
-    sample_weight = get_sample_weight(train_wo_x)
-    train_model(train_wo_x, train_y, wo_lstm, sample_weight)
-    train_model(train_wo_x, train_y, wo_tcn, sample_weight)
-    train_model(train_wo_x, train_y, wo_transformer, sample_weight)
-    train_w_x, train_y = shuffle(train_w_x, train_y, random_state=0)
-    sample_weight = get_sample_weight(train_w_x)
-    train_model(train_w_x, train_y, w_lstm, sample_weight)
-    train_model(train_w_x, train_y, w_tcn, sample_weight)
-    train_model(train_w_x, train_y, w_transformer, sample_weight)
-
-
-
+    all_split_wo_x = []
+    all_split_wo_y = []
+    all_split_w_x = []
+    all_split_w_y = []
+    input_proportion = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
     for proportion in input_proportion:
         input_dict = get_input_x(data_dict, proportion)
         train_y = get_input_y(data_dict, input_dict)
@@ -462,34 +438,27 @@ def run_model():
         wo_activity_input = feature_encoding(input_dict, action_label)
         w_activity_input = add_activity(wo_activity_input)
 
-        # lstm
-        wo_lstm_result = cross_validation(wo_activity_input, encoded_y, wo_lstm, max_action_len)
-        wo_lstm_results[proportion] = wo_lstm_result
-        w_lstm_result = cross_validation(w_activity_input, encoded_y, w_lstm, max_action_len)
-        w_lstm_results[proportion] = w_lstm_result
+        # get 4 splits (actions only, without activity)
+        split_wo_x, split_wo_y = get_splits(wo_activity_input, encoded_y)
+        all_split_wo_x.append(split_wo_x)
+        all_split_wo_y.append(split_wo_y)
 
-        # tcn
-        wo_tcn_result = cross_validation(wo_activity_input, encoded_y, wo_tcn, max_action_len)
-        wo_tcn_results[proportion] = wo_tcn_result
-        w_tcn_result = cross_validation(w_activity_input, encoded_y, w_tcn, max_action_len)
-        w_tcn_results[proportion] = w_tcn_result
+        # get 4 splits (actions with activity)
+        split_w_x, split_w_y = get_splits(w_activity_input, encoded_y)
+        all_split_w_x.append(split_w_x)
+        all_split_w_y.append(split_w_y)
+    wo_lstm_result = cross_validation(all_split_wo_x,all_split_wo_y, wo_lstm)
+    w_lstm_result = cross_validation(all_split_w_x, all_split_w_y, w_lstm)
+    wo_tcn_result = cross_validation(all_split_wo_x, all_split_wo_y, wo_tcn)
+    w_tcn_result = cross_validation(all_split_w_x, all_split_w_y, w_tcn)
+    wo_transformer_result = cross_validation(all_split_wo_x, all_split_wo_y, wo_transformer)
+    w_transformer_result = cross_validation(all_split_w_x, all_split_w_y, w_transformer)
 
-        # transformer
-        wo_transformer_result = cross_validation(wo_activity_input, encoded_y, wo_transformer, max_action_len)
-        wo_transformer_results[proportion] = wo_transformer_result
-        w_transformer_result = cross_validation(w_activity_input, encoded_y, w_transformer, max_action_len)
-        w_transformer_results[proportion] = w_transformer_result
 
-    # wo_sd = statistics.stdev(wo_lstm_results)
-    # # print("wo activity sd: ", wo_sd)
-    # w_sd = statistics.stdev(w_lstm_results)
-    # # print("with activity sd: ", w_sd)
-    display_acc(wo_lstm_results, "LSTM", "No")
-    display_acc(w_lstm_results, "LSTM", "Yes")
-    display_acc(wo_tcn_results, "TCN", "No")
-    display_acc(w_tcn_results, "TCN", "Yes")
-    display_acc(wo_transformer_results, "Transformer", "No")
-    display_acc(w_transformer_results, "Transformer", "Yes")
+
+    display_acc([wo_lstm_result, wo_tcn_result,wo_transformer_result], "No")
+    display_acc([w_lstm_result, w_tcn_result, w_transformer_result],"Yes")
+
 
 
 run_model()

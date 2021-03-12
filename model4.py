@@ -9,7 +9,6 @@ import os
 import numpy as np
 import copy
 from operator import add
-import statistics
 
 # predict goal first, add predicted goal to the input and predict next action segment
 # import data
@@ -456,7 +455,7 @@ def cross_validation(input_dict, goal_y, action_y, wo_model, w_model, max_timest
         testX = copy.deepcopy(new_splits_x[i])
         testY_action = copy.deepcopy(splits_action_y[i])
 
-        train_model(trainX, trainY_action, w_model, sample_weight)
+        # train_model(trainX, trainY_action, w_model, sample_weight)
         temp_action_acc, predicted_action = evaluation(testX, testY_action, w_model, max_timesteps, 0)
         predicted_action_list.append(predicted_goal)
         action_acc += temp_action_acc
@@ -502,7 +501,6 @@ def run_model():
     # w_transformer_results = {}
     # get input data with different proportion
     # input_proportion = [0.1]
-    listt = []
     input_proportion = [0.1, 0.2, 0.3, 0.4, 0.5]
     # input_proportion = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
     for proportion in input_proportion:
@@ -521,8 +519,9 @@ def run_model():
         wo_lstm_goal_acc, wo_lstm_action_acc = cross_validation(wo_activity_input, encoded_goal_y, encoded_action_y,
                                                                 wo_lstm, w_lstm, max_action_len, 1)
         wo_lstm_results[proportion] = [wo_lstm_goal_acc, wo_lstm_action_acc]
-
-        listt.append(wo_lstm_action_acc)
+        w_activity_input = add_activity_to_actions(wo_activity_input)
+        w_lstm_result = cross_validation(w_activity_input, encoded_y, w_lstm, max_action_len)
+        w_lstm_results[proportion] = w_lstm_result
 
         # tcn
         # wo_tcn_goal_acc, wo_tcn_action_acc = cross_validation(wo_activity_input, encoded_goal_y, encoded_action_y,
@@ -537,8 +536,7 @@ def run_model():
         # wo_transformer_results[proportion] = [wo_transformer_goal_acc, wo_transformer_action_acc]
     #     w_transformer_result = cross_validation(w_activity_input, encoded_y, w_transformer, max_action_len)
     #     w_transformer_results[proportion] = w_transformer_result
-    wo_sd = statistics.stdev(listt)
-    print("wo activity sd: ", wo_sd)
+
     display_acc(wo_lstm_results, "LSTM", "No")
     display_acc(wo_tcn_results, "TCN", "No")
     display_acc(wo_transformer_results, "Transformer", "No")
