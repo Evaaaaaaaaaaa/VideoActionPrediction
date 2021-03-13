@@ -228,12 +228,14 @@ from tensorflow.keras import Input, Model
 #
 def lstm_model(max_action_len):
     i = Input(shape=(max_action_len, 47))
-    o = LSTM(128)(i)
+    o = LSTM(128, return_sequences=True)(i)
+    o = LSTM(64)(o)
     o1 = Dense(10, activation="softmax")(o)
     o1_repeat = RepeatVector(max_action_len)(o1)
     # # todo: i + o1_repeat concatenate
     o1_repeat = tf.concat([i, o1_repeat], -1)
-    o2 = LSTM(128)(o1_repeat)
+    o2 = LSTM(128, return_sequences=True)(o1_repeat)
+    o2 = LSTM(64)(o2)
     o2 = Dense(47, activation="softmax")(o2)
     # o2 = Dense(47, activation="softmax")(o1)
     model = Model(inputs=[i], outputs=[o2, o1])
@@ -251,7 +253,8 @@ def tcn_model(max_action_len):
     o1_repeat = RepeatVector(max_action_len)(o1)
     # # todo: i + o1_repeat concatenate
     o1_repeat = tf.concat([i, o1_repeat], -1)
-    o2 = TCN(64, return_sequences=False)(o1_repeat)
+    o2 = TCN(128, return_sequences=True)(o1_repeat)
+    o2 = TCN(64, return_sequences=False)(o2)
     o2 = Dense(47, activation="softmax")(o2)
     model = Model(inputs=[i], outputs=[o2, o1])
     model.compile(optimizer='adam', loss=['categorical_crossentropy', 'categorical_crossentropy'], metrics=['accuracy'])
@@ -355,10 +358,7 @@ def transformer_model(max_action_len):
     inputs = layers.Input(shape=(max_action_len, 47))
     transformer_block1 = TransformerBlock(47, 1, ff_dim)
     i = transformer_block1(inputs)
-    # x = layers.GlobalAveragePooling1D()(x)
-    # x = layers.Dropout(0.1)(x)
     i = layers.Dense(128, activation="relu")(i)
-    # # x = layers.Dense(64, activation="relu")(x)
     i = layers.Flatten()(i)
     o1 = layers.Dense(10, activation="softmax")(i)
     o1_repeat = RepeatVector(max_action_len)(o1)
@@ -396,7 +396,7 @@ def train_model(trainX, trainY, model, sample_weight):
 #     print(count / len(testY))
 #     return count / len(testY)
 
-def evaluation(testX, testY, model, max_timesteps):
+def evaluation(testX, testY, model):
     predictions = model.predict(testX)
     predicted_action = predictions[0]
     predicted_goal = predictions[1]
@@ -436,7 +436,56 @@ def evaluation(testX, testY, model, max_timesteps):
     return action_acc, goal_acc
 
 
-def cross_validation(input_dict, goal_y, action_y, model, max_timesteps, is_goal):
+def cross_validation(all_split_x, all_split_y_action, all_split_y_goal, model):
+    train_all_fold_x = [[], [], [], []]
+    train_all_fold_y_action = [[], [], [], []]
+    train_all_fold_y_goal = [[], [], [], []]
+
+    test_all_fold_x = [[], [], [], []]
+    test_all_fold_y_action = [[], [], [], []]
+    test_all_fold_y_goal = [[], [], [], []]
+    train_y_fold = []
+    for i in range(9):
+        for j in range(4):
+            for k in range(4):
+                if j != k:
+                    train_all_fold_x[j].extend(copy.deepcopy(all_split_x[i][k]))
+                    train_all_fold_y_action[j].extend(copy.deepcopy(all_split_y_action[i][k]))
+                    train_all_fold_y_goal[j].extend(copy.deepcopy(all_split_y_goal[i][k]))
+            test_all_fold_x[j].append(copy.deepcopy(all_split_x[i][j]))
+            test_all_fold_y_action[j].append(copy.deepcopy(all_split_y_action[i][j]))
+            test_all_fold_y_goal[j].append(copy.deepcopy(all_split_y_goal[i][j]))
+    acc_action_list = [0] * 9
+    acc_goal_list = [0] * 9
+    # train for 4 splits, test for 4 splits for each of 0.1-0.9 (4*9 times)
+    for i in range(4):
+        # train 0.1-0.9 together
+        m = model
+        m.fit(np.array(train_all_fold_x[i]), [np.array(train_all_fold_y_action[i]), np.array(train_all_fold_y_goal[i])], epochs=20, batch_size=128, shuffle=True)
+        # test each percentage
+        for j in range(9):
+            acc_action, acc_goal = evaluation(test_all_fold_x[i][j], [np.array(test_all_fold_y_action[i][j]), np.array(test_all_fold_y_goal[i][j])], m)
+            acc_action_list[j] += acc_action
+            acc_goal_list[j] += acc_goal
+    for i in range(9):
+        acc_action_list[i] /= 4
+        acc_goal_list[i] /= 4
+    return acc_action_list, acc_goal_list
+
+
+def display_acc(results, is_goal):
+    # loop through result for each input proportion\
+    if is_goal:
+        print("Model 3", "Goal Accuracy: ")
+    else:
+        print("Model 3", "Action Accuracy: ")
+    for i in range(9):
+        print("proportion: ", (i+1)/10)
+        print(round(results[0][i], 5))
+        print(round(results[1][i], 5))
+        print(round(results[2][i], 5))
+
+def get_splits(input_dict, encoded_action, encoded_goal):
     file_count = 0
     s1_x, s2_x, s3_x, s4_x = [], [], [], []
     s1_goal_y, s2_goal_y, s3_goal_y, s4_goal_y = [], [], [], []
@@ -446,72 +495,29 @@ def cross_validation(input_dict, goal_y, action_y, model, max_timesteps, is_goal
     # s3: P29 – P41
     # s4: P42 – P54
     count = 0
-    print(len(input_dict))
-
     for filename, frames in input_dict.items():
         if int(filename[1:3]) <= 15:
             s1_x.append(input_dict[filename])
-            s1_goal_y.append(goal_y[file_count])
-            s1_action_y.append(action_y[file_count])
+            s1_action_y.append(encoded_action[file_count])
+            s1_goal_y.append(encoded_goal[file_count])
         elif 16 <= int(filename[1:3]) <= 28:
             s2_x.append(input_dict[filename])
-            s2_goal_y.append(goal_y[file_count])
-            s2_action_y.append(action_y[file_count])
+            s2_action_y.append(encoded_action[file_count])
+            s2_goal_y.append(encoded_goal[file_count])
         elif 29 <= int(filename[1:3]) <= 41:
             s3_x.append(input_dict[filename])
-            s3_goal_y.append(goal_y[file_count])
-            s3_action_y.append(action_y[file_count])
+            s3_action_y.append(encoded_action[file_count])
+            s3_goal_y.append(encoded_goal[file_count])
         elif 42 <= int(filename[1:3]) <= 54:
             s4_x.append(input_dict[filename])
-            s4_goal_y.append(goal_y[file_count])
-            s4_action_y.append(action_y[file_count])
+            s4_action_y.append(encoded_action[file_count])
+            s4_goal_y.append(encoded_goal[file_count])
         file_count += 1
+
     splits_x = [s1_x, s2_x, s3_x, s4_x]
-    splits_goal_y = [s1_goal_y, s2_goal_y, s3_goal_y, s4_goal_y]
-    splits_action_y = [s1_action_y, s2_action_y, s3_action_y, s4_action_y]
-
-    final_action_acc = final_goal_acc = 0
-    for i in range(4):
-        trainX = []
-        trainY_goal = []
-        trainY_action = []
-        for j in range(4):
-            if i != j:
-                trainX += copy.deepcopy(splits_x[j])
-                trainY_goal += copy.deepcopy(splits_goal_y[j])
-                trainY_action += copy.deepcopy(splits_action_y[j])
-        trainY = [trainY_action, trainY_goal]
-        testX = copy.deepcopy(splits_x[i])
-        testY_goal = copy.deepcopy(splits_goal_y[i])
-        testY_action = copy.deepcopy(splits_action_y[i])
-        testY = [testY_action, testY_goal]
-        # sample_weight = get_sample_weight(trainX)
-
-        # train and evaluate the model
-        # train_model(trainX, trainY, model, sample_weight)
-        action_acc, goal_acc = evaluation(testX, testY, model, max_timesteps)
-
-        final_action_acc += action_acc
-        final_goal_acc += goal_acc
-    #         print(final_acc)
-    final_action_acc = final_action_acc / 4
-    final_goal_acc = final_goal_acc/4
-    return final_action_acc, final_goal_acc
-
-
-def display_acc(results, model_name, w_or_wo):
-    # loop through result for each input proportion
-
-    print("Model: ", model_name, "     With_Activity: ", w_or_wo, "        action accuracy")
-    for proportion, acc in results.items():
-        #    print("Input(%): ", proportion * 100)
-        print(round(acc[0], 5), " ", end="")
-    print("")
-    print("Model: ", model_name, "     With_Activity: ", w_or_wo, "       goal")
-    for proportion, acc in results.items():
-        print(round(acc[1], 5), " ", end="")
-    print("")
-
+    splits_y_action = [s1_action_y, s2_action_y, s3_action_y, s4_action_y]
+    splits_y_goal = [s1_goal_y,s2_goal_y,s3_goal_y,s4_goal_y]
+    return splits_x, splits_y_action,splits_y_goal
 def run_model():
     data_dict = import_data()
     data_dict = cut_zeros(data_dict)
@@ -522,73 +528,31 @@ def run_model():
     wo_transformer = transformer_model(max_action_len)
 
 
-    wo_lstm_results = {}
-    # w_lstm_results = {}
-    wo_tcn_results = {}
-    wo_transformer_results = {}
-    listt = []
-    # get input data with different proportion
-    # input_proportion = [0.1]
+
+
     input_proportion = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-    train_wo_x = []
-    train_y_goal = []
-    train_y_action = []
+    all_split_x = []
+    all_split_y_action = []
+    all_split_y_goal = []
     for proportion in input_proportion:
         input_dict, train_goal_y, train_action_y = get_input_x_y(data_dict, proportion, 2)
         input_dict = frames_to_action(input_dict)
         input_dict = add_padding_to_x(input_dict, max_action_len)
-        # train_action_y= add_padding_to_y(train_action_y, max_action_len)
         encoded_goal_y = np.array(label_encoding(train_goal_y, action_label, 1))
         encoded_action_y = np.array(label_encoding(train_action_y, action_label, 0))
         wo_activity_input = feature_encoding(input_dict, action_label)
 
-        temp_wo_x = []
-        for filename, frames in wo_activity_input.items():
-            temp_wo_x.append(wo_activity_input[filename])
-        train_wo_x.extend(temp_wo_x)
+        split_x, split_y_action, split_y_goal = get_splits(wo_activity_input, encoded_action_y, encoded_goal_y)
+        all_split_x.append(split_x)
+        all_split_y_action.append(split_y_action)
+        all_split_y_goal.append(split_y_goal)
 
-        train_y_goal.extend(encoded_goal_y)
-        train_y_action.extend(encoded_action_y)
-    train_y = [train_y_action, train_y_goal]
-    sample_weight = get_sample_weight(train_wo_x)
-    train_model(train_wo_x, train_y, wo_lstm, sample_weight)
-    train_model(train_wo_x, train_y, wo_tcn, sample_weight)
-    train_model(train_wo_x, train_y, wo_transformer, sample_weight)
-    for proportion in input_proportion:
-        #     input_dict = get_input_x(data_dict, proportion)
-        #     train_y = get_input_y(data_dict, input_dict)
-        input_dict, train_goal_y, train_action_y = get_input_x_y(data_dict, proportion, 2)
-        input_dict = frames_to_action(input_dict)
-        input_dict = add_padding_to_x(input_dict, max_action_len)
-        # train_action_y= add_padding_to_y(train_action_y, max_action_len)
-        encoded_goal_y = np.array(label_encoding(train_goal_y, action_label, 1))
-        encoded_action_y = np.array(label_encoding(train_action_y, action_label, 0))
-        wo_activity_input = feature_encoding(input_dict, action_label)
+    lstm_action_acc, lstm_goal_acc = cross_validation(all_split_x, all_split_y_action, all_split_y_goal, wo_lstm)
+    tcn_action_acc, tcn_goal_acc = cross_validation(all_split_x, all_split_y_action, all_split_y_goal, wo_tcn)
+    transformer_action_acc, transformer_goal_acc = cross_validation(all_split_x, all_split_y_action, all_split_y_goal,
+                                                                    wo_transformer)
 
-
-        # # # lstm
-        wo_lstm_action_acc, wo_lstm_goal_acc = cross_validation(wo_activity_input, encoded_goal_y, encoded_action_y,
-                                                                wo_lstm, max_action_len, 1)
-        wo_lstm_results[proportion] = [wo_lstm_action_acc, wo_lstm_goal_acc]
-        listt.append(wo_lstm_action_acc)
-        # # tcn
-
-        wo_tcn_action_acc, wo_tcn_goal_acc = cross_validation(wo_activity_input, encoded_goal_y, encoded_action_y,
-                                                              wo_tcn, max_action_len, 1)
-        wo_tcn_results[proportion] = [wo_tcn_action_acc, wo_tcn_goal_acc]
-
-        # transformer
-        wo_transformer_action_acc, wo_transformer_goal_acc = cross_validation(wo_activity_input, encoded_goal_y,
-                                                                              encoded_action_y,
-                                                                              wo_transformer, max_action_len, 1)
-        wo_transformer_results[proportion] = [wo_transformer_action_acc, wo_transformer_goal_acc]
-
-    # wo_sd = statistics.stdev(wo_lstm_results)
-    # print("wo activity sd: ", wo_sd)
-    #
-    display_acc(wo_lstm_results, "LSTM", "No")
-    display_acc(wo_tcn_results, "TCN", "No")
-    display_acc(wo_transformer_results, "Transformer", "No")
-
+    display_acc([lstm_action_acc, tcn_action_acc, transformer_action_acc], 0)
+    display_acc([lstm_goal_acc, tcn_goal_acc, transformer_goal_acc], 1)
 
 run_model()

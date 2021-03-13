@@ -171,7 +171,8 @@ def lstm_model(max_action_len, with_activity):
     i = Input(shape=(max_action_len, data_dimension))
     # o = LSTM(128, return_sequences=True)(i)
     # o = LSTM(256, return_sequences=True)(o)
-    o = LSTM(128)(i)
+    o = LSTM(128, return_sequences=True)(i)
+    o = LSTM(64)(o)
     o = Dense(47, activation="softmax")(o)
     model = Model(inputs=i, outputs=o)
     model.compile(loss=['categorical_crossentropy', 'categorical_crossentropy'], optimizer='adam', metrics=['accuracy'],
@@ -257,7 +258,7 @@ class MultiHeadSelfAttention(tf.keras.layers.Layer):
 class TransformerBlock(layers.Layer):
     def __init__(self, embed_dim, num_heads, ff_dim, rate=0.1):
         super(TransformerBlock, self).__init__()
-        self.att = MultiHeadSelfAttention(embed_dim, num_heads)
+        self.att = MultiHeadSelfAttention(embed_dim, 1)
         self.ffn = keras.Sequential(
             [layers.Dense(ff_dim, activation="relu"), layers.Dense(embed_dim), ]
         )
@@ -309,12 +310,6 @@ def transformer_model(max_action_len, with_activity):
     model.summary()
     return model
 
-
-# cross validation
-def train_model(trainX, trainY, model, sample_weight):
-    model.fit(np.array(trainX), np.array(trainY), epochs=20, batch_size=128, shuffle = True)
-
-
 def evaluation(testX, testY, model):
     predictions = model.predict(testX)
     #     print(predictions)
@@ -338,7 +333,7 @@ def evaluation(testX, testY, model):
     print(len(results))
     return correct / len(results)
 
-#all_split_x = [[split1, split2, split3, split4],[...],[...]....]
+#all_split_x = [[split1, split2, split3, split4],[...],[...]....]  each percentage has 4 splits
 def cross_validation(all_split_x, all_split_y, model):
 
     train_all_fold_x = [[], [], [], []]
@@ -363,7 +358,6 @@ def cross_validation(all_split_x, all_split_y, model):
     for i in range(4):
         # train 0.1-0.9 together
         m = model
-        print(np.array(train_all_fold_x[i]).shape, np.array(train_all_fold_y[i]).shape)
         m.fit(np.array(train_all_fold_x[i]), np.array(train_all_fold_y[i]), epochs=20, batch_size=128, shuffle=True)
         # test each percentage
         for j in range(9):
@@ -372,6 +366,7 @@ def cross_validation(all_split_x, all_split_y, model):
         acc_list[i] /= 4
 
     return acc_list
+
 def get_splits(input_dict, encoded_y):
     file_count = 0
     s1_x, s2_x, s3_x, s4_x = [], [], [], []
@@ -406,8 +401,8 @@ def display_acc(results, w_or_wo):
     for i in range(9):
         print("proportion: ", (i+1)/100)
         print(round(results[0][i], 5))
-        print(round(results[1][i], 5))
-        print(round(results[2][i], 5))
+        # print(round(results[1][i], 5))
+        # print(round(results[2][i], 5))
 
 
 def run_model():
@@ -433,7 +428,6 @@ def run_model():
         train_y = get_input_y(data_dict, input_dict)
         input_dict = frames_to_action(input_dict)
         input_dict = add_padding_to_x(input_dict, max_action_len)
-        # train_y = add_padding_to_y(train_y, max_action_len)
         encoded_y = np.array(label_encoding(train_y, action_label))
         wo_activity_input = feature_encoding(input_dict, action_label)
         w_activity_input = add_activity(wo_activity_input)
@@ -449,15 +443,15 @@ def run_model():
         all_split_w_y.append(split_w_y)
     wo_lstm_result = cross_validation(all_split_wo_x,all_split_wo_y, wo_lstm)
     w_lstm_result = cross_validation(all_split_w_x, all_split_w_y, w_lstm)
-    wo_tcn_result = cross_validation(all_split_wo_x, all_split_wo_y, wo_tcn)
-    w_tcn_result = cross_validation(all_split_w_x, all_split_w_y, w_tcn)
-    wo_transformer_result = cross_validation(all_split_wo_x, all_split_wo_y, wo_transformer)
-    w_transformer_result = cross_validation(all_split_w_x, all_split_w_y, w_transformer)
+    # wo_tcn_result = cross_validation(all_split_wo_x, all_split_wo_y, wo_tcn)
+    # w_tcn_result = cross_validation(all_split_w_x, all_split_w_y, w_tcn)
+    # wo_transformer_result = cross_validation(all_split_wo_x, all_split_wo_y, wo_transformer)
+    # w_transformer_result = cross_validation(all_split_w_x, all_split_w_y, w_transformer)
 
-
-
-    display_acc([wo_lstm_result, wo_tcn_result,wo_transformer_result], "No")
-    display_acc([w_lstm_result, w_tcn_result, w_transformer_result],"Yes")
+    display_acc([wo_lstm_result], "No")
+    display_acc([w_lstm_result], "No")
+    # display_acc([wo_lstm_result, wo_tcn_result,wo_transformer_result], "No")
+    # display_acc([w_lstm_result, w_tcn_result, w_transformer_result],"Yes")
 
 
 
